@@ -1,64 +1,8 @@
 from timm import create_model
 import torch
 from torch import nn
-import torch.nn.functional as F
 
-
-class ConvBlock(nn.Module):
-    def __init__(
-            self,
-            in_channels: int,
-            out_channels: int,
-            kernel_size: int,
-            padding: int,
-            stride: int
-        ) -> None:
-
-        super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(
-                in_channels,
-                out_channels,
-                kernel_size=kernel_size,
-                padding=padding,
-                stride=stride,
-            ),
-            nn.LayerNorm(out_channels),
-            nn.Mish(),
-            nn.Conv2d(
-                out_channels,
-                out_channels,
-                kernel_size=kernel_size,
-                padding=padding,
-                stride=stride,
-            ),
-            nn.LayerNorm(out_channels),
-            nn.Mish()
-        )
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.conv(x)
-
-
-class UpConvBlock(nn.Module):
-    def __init__(
-            self,
-            in_channles: int,
-            out_channles: int,
-            kernel_size: int = 2,
-            stride: int = 2
-        ) -> None:
-
-        super().__init__()
-        self.conv = nn.ConvTranspose2d(
-            in_channels=in_channles,
-            out_channels=out_channles,
-            kernel_size=kernel_size,
-            stride=stride,
-        )
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.conv(x)
+from .unet_layers import ConvBlock, UpConvBlock
 
 
 class Image2ImageUNet(nn.Module):

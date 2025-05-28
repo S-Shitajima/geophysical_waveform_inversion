@@ -35,16 +35,14 @@ class MyDataset(Dataset):
             width: int,
             mean_x: torch.Tensor,
             std_x: torch.Tensor,
-            mean_y: Union[torch.Tensor, None],
-            std_y: Union[torch.Tensor, None],
+            do_transform: bool = False
         ) -> None:
         self.paths = paths
         self.height = height
         self.width = width
         self.mean_x = mean_x
         self.std_x = std_x
-        self.mean_y = mean_y
-        self.std_y = std_y
+        self.do_transform = do_transform
     
     def __len__(self) -> int:
         return len(self.paths)
@@ -57,17 +55,31 @@ class MyDataset(Dataset):
         x = log_transform_torch(x)
         x = (x - self.mean_x) / self.std_x
         x = x.unsqueeze(dim=0)
-        x = F.interpolate(x, size=(self.height, self.width), mode="nearest")
+        x = F.interpolate(x, size=(self.height, self.width), mode="bilinear")
         x = x.squeeze(dim=0)
         x = x.float()
 
         y = images["y"] # (1, 70, 70)
         y = torch.from_numpy(y)
-        if self.mean_y is not None and self.std_y is not None:
-            y = (y - self.mean_y) / self.std_y
         y = y.float()
+
+        if self.do_transform:
+            x, y = self._random_hflip(x, y)
+
         return x, y, label, path.as_posix()
     
+    def _random_hflip(
+            self,
+            image1: torch.Tensor,
+            image2: torch.Tensor,
+            p: float = 0.5
+        ) -> tuple[torch.Tensor, torch.Tensor]:
+
+        if torch.rand(()) < p:
+            return image1[::-1, :, ::-1], image2[:, :, ::-1]
+        else:
+            return image1, image2
+        
 
 class MyDataModule(L.LightningDataModule):
     def __init__(
@@ -81,8 +93,7 @@ class MyDataModule(L.LightningDataModule):
             width: int,
             mean_x: torch.Tensor,
             std_x: torch.Tensor,
-            mean_y: Union[torch.Tensor, None],
-            std_y: Union[torch.Tensor, None],
+            do_transform: bool = False,
         ) -> None:
 
         super().__init__()
@@ -94,8 +105,7 @@ class MyDataModule(L.LightningDataModule):
         self.width = width
         self.mean_x = mean_x
         self.std_x = std_x
-        self.mean_y = mean_y
-        self.std_y = std_y
+        self.do_transform = do_transform
         self.generator = torch.Generator().manual_seed(seed)
 
     def setup(self, stage: str) -> None:
@@ -106,8 +116,7 @@ class MyDataModule(L.LightningDataModule):
                 width=self.width,
                 mean_x=self.mean_x,
                 std_x=self.std_x,
-                mean_y=self.mean_y,
-                std_y=self.std_y
+                do_transform=self.do_transform,
             )
             self.valid_dataset = MyDataset(
                 paths=self.valid_paths,
@@ -115,8 +124,7 @@ class MyDataModule(L.LightningDataModule):
                 width=self.width,
                 mean_x=self.mean_x,
                 std_x=self.std_x,
-                mean_y=self.mean_y,
-                std_y=self.std_y
+                do_transform=False,
             )
         elif stage == "test":
             self.test_dataset = MyDataset(
@@ -125,8 +133,7 @@ class MyDataModule(L.LightningDataModule):
                 width=self.width,
                 mean_x=self.mean_x,
                 std_x=self.std_x,
-                mean_y=self.mean_y,
-                std_y=self.std_y
+                do_transform=False,
             )
         else:
             pass

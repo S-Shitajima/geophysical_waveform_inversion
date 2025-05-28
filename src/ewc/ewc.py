@@ -12,20 +12,21 @@ class EWC:
             datamodule: L.LightningDataModule,
             loss_fn1: nn.Module,
             loss_fn2: nn.Module,
+            device: torch.device,
         ) -> None:
 
         self.model = model
-        datamodule.setup()
+        datamodule.setup(stage="fit")
         dataloader = datamodule.train_dataloader()
-        self.device = model.device
+        self.device = device
         self.params = {n: p for n, p in self.model.named_parameters() if p.requires_grad}
         self._means = {n: p.clone().detach() for n, p in self.params.items()}
         self._fisher = self._compute_fisher(dataloader, loss_fn1, loss_fn2)
 
-    def _computr_fisher(self, dataloader, loss_fn1, loss_fn2):
+    def _compute_fisher(self, dataloader, loss_fn1, loss_fn2):
         fisher = {n: torch.zeros_like(p, device=self.device) for n, p in self.params.items()}
         self.model.eval()
-        for x, y, label in dataloader:
+        for x, y, label, _ in dataloader:
             x = x.to(self.device)
             y = y.to(self.device)
             label = label.to(self.device)

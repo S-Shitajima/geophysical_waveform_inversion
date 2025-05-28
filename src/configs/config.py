@@ -18,8 +18,10 @@ class CFG:
             width: int,
             batch_size: int,
             epochs: int,
+            learning_rate: float,
             patience: int,
             accumulation_steps: int,
+            do_transform: bool,
         ) -> None:
 
         self.output_dir = output_dir
@@ -32,8 +34,10 @@ class CFG:
         self.width = width
         self.batch_size = batch_size
         self.epochs = epochs
+        self.learning_rate = learning_rate
         self.patience = patience
         self.accumulation_steps = accumulation_steps
+        self.do_transform = do_transform
         if not output_dir.is_dir():
             output_dir.mkdir(exist_ok=True, parents=True)
         assert 0.0 < train_ratio < 1.0
