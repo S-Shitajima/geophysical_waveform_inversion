@@ -54,9 +54,9 @@ class MyDataset(Dataset):
         x = torch.from_numpy(x)
         x = log_transform_torch(x)
         x = (x - self.mean_x) / self.std_x
-        x = x.unsqueeze(dim=0)
+        x = x.unsqueeze(dim=0) # (1, 5, 1000, 70)
         x = F.interpolate(x, size=(self.height, self.width), mode="bilinear")
-        x = x.squeeze(dim=0)
+        x = x.squeeze(dim=0) # (5, new_h, new_w)
         x = x.float()
 
         y = images["y"] # (1, 70, 70)
@@ -76,7 +76,7 @@ class MyDataset(Dataset):
         ) -> tuple[torch.Tensor, torch.Tensor]:
 
         if torch.rand(()) < p:
-            return image1[::-1, :, ::-1], image2[:, :, ::-1]
+            return image1.flip(dims=[0, -1]), image2.flip(dims=[-1])
         else:
             return image1, image2
         
