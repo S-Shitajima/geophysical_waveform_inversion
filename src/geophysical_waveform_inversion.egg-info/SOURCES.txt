@@ -1,6 +1,9 @@
+README.md
 setup.py
 src/configs/__init__.py
 src/configs/config.py
+src/ema/__init__.py
+src/ema/ema.py
 src/ewc/__init__.py
 src/ewc/ewc.py
 src/geophysical_waveform_inversion.egg-info/PKG-INFO
@@ -11,6 +14,7 @@ src/model/__init__.py
 src/model/image2image_unet.py
 src/model/multitask_unet.py
 src/model/unet.py
+src/model/unet_layers.py
 src/util/__init__.py
 src/util/get_logger.py
 src/util/log_transform.py

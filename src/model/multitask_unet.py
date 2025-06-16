@@ -1,8 +1,20 @@
 from timm import create_model, layers
 import torch
 from torch import nn
+import torch.nn.functional as F
 
-from .unet_layers import ConvBlock, ResConvBlock, PreActResConvBlock, PreActUpConvBlock, UpConvBlock
+from .unet_layers import (
+    AdjustLayer,
+    ConvBlock,
+    ResConvBlock,
+    ResConvSCSEBlock,
+    PreActResConvBlock,
+    PreActUpConvBlock,
+    SCSEBlock,
+    SpatialAttention,
+    UpConvBlock,
+    UpPixelShuffleBlock,
+)
 
 
 class MultiTaskUNet(nn.Module):
@@ -15,6 +27,16 @@ class MultiTaskUNet(nn.Module):
             width: int,
         ) -> None:
         super().__init__()
+
+        # resize layer
+        # width_factor = width // 72
+        # self.resize = nn.Sequential(
+        #     nn.Conv2d(in_channels=5, out_channels=32*(width_factor**2), kernel_size=3, padding=1),
+        #     nn.PixelShuffle(width_factor),
+        #     layers.LayerNorm2d(32),
+        #     nn.GELU(),
+        #     nn.Conv2d(in_channels=32, out_channels=5, kernel_size=1, stride=1),
+        # )
 
         # encoder
         self.model_name = model_name
@@ -36,16 +58,6 @@ class MultiTaskUNet(nn.Module):
                 out_indices=(0, 1, 2, 3),
             )
         
-        # Change the first conv layer’s kernel size and stride from 4×4 to 2×2
-        # if "nextvit" in model_name:
-        #     stem2_out_channels = self.encoder["stem_2"].conv.out_channels
-        #     stem3_out_channels = self.encoder["stem_3"].conv.out_channels
-        #     self.encoder["stem_3"].conv = nn.Conv2d(in_channels=stem2_out_channels, out_channels=stem3_out_channels, kernel_size=1, stride=1, padding=0, bias=False)
-        # elif "convnext" in model_name:
-        #     stem0_out_channels = self.encoder["stem_0"].out_channels
-        #     self.encoder["stem_0"] = nn.Conv2d(in_channels=5, out_channels=stem0_out_channels, kernel_size=1, stride=1, padding=0, bias=False)
-        # print(self.encoder)
-        
         shapes = []
         for i, out in enumerate(self.encoder(torch.randn(1, 5, height, width))):
             print(i, out.shape)
@@ -62,37 +74,56 @@ class MultiTaskUNet(nn.Module):
         for i, (sh1, sh2) in enumerate(zip(shapes[:-1], shapes[1:])):
             ch1, h1, w1 = sh1
             ch2, h2, w2 = sh2
-            self.convs[str(i)] = nn.ModuleList([UpConvBlock(ch1, ch2, h2, w2),
-                                                ResConvBlock(2*ch2, ch2, h2, w2, 3, 1, 1)])
+            self.convs[str(i)] = nn.ModuleList(
+                [
+                    # UpConvBlock(ch1, ch2, 2, 2),
+                    # ResConvBlock(2*ch2, ch2, 3, 1, 1),
+                    UpPixelShuffleBlock(ch1, ch2, 2),
+                    AdjustLayer(h1, w1, h2, w2),
+                    ResConvSCSEBlock(2*ch2, ch2, 3, 1, 1),
+                ]
+            )
         
         # Final layer
+        upscale_factor = width // shapes[-1][2]
+        downscale_factor = height // shapes[-1][1]
         self.final = nn.Sequential(
-            nn.Conv2d(shapes[-1][0], shapes[-1][0], kernel_size=3, stride=1),
+            nn.ConvTranspose2d(in_channels=shapes[-1][0], out_channels=shapes[-1][0], kernel_size=(1, upscale_factor), stride=(1, upscale_factor)),
             layers.LayerNorm2d(shapes[-1][0]),
             nn.GELU(),
-            nn.Conv2d(shapes[-1][0], 1, kernel_size=1, stride=1),
+            nn.Conv2d(in_channels=shapes[-1][0], out_channels=shapes[-1][0], kernel_size=(downscale_factor, 1), stride=(downscale_factor, 1)),
+            layers.LayerNorm2d(shapes[-1][0]),
+            nn.GELU(),
+            nn.Conv2d(shapes[-1][0], 1, kernel_size=1, bias=False),
         )
         
         # Classifier layer
-        self.clf = nn.Sequential(
+        self.global_pool = nn.Sequential(
+            SpatialAttention(),
             nn.AdaptiveAvgPool2d(output_size=1),
             nn.Flatten(start_dim=1),
-            nn.Linear(shapes[0][0], num_classes),
         )
+        self.dropouts = nn.ModuleList([nn.Dropout(0.3) for _ in range(5)])
+        self.clf = nn.Linear(shapes[0][0], num_classes, bias=False)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         xs = self.encoder(x)
         if "swin" in self.model_name:
             xs = [x.permute(0, 3, 1, 2) for x in xs]
-        x = xs[-1] # (N, C4, 9, 9)
-        clf_logit = self.clf(x)
+        x = xs[-1]
 
+        # classification
+        x_clf = self.global_pool(x)
+        clf_logit = sum([self.clf(dropout(x_clf)) for dropout in self.dropouts]) / 5
+
+        # decoding
         for i in range(len(self.convs)):
             x = self.convs[str(i)][0](x)
-            x = torch.cat([x, xs[len(self.convs)-1-i]], dim=1)
             x = self.convs[str(i)][1](x)
+            x = torch.cat([x, xs[len(self.convs)-1-i]], dim=1)
+            x = self.convs[str(i)][2](x)
         
-        # Final output
-        logit = self.final(x)
-        # logit = logit[:, :, 1:71, 1:71]
-        return logit, clf_logit
+        # final output
+        reg_logit = self.final(x)
+        reg_logit = reg_logit[:, :, 1:71, 1:71]
+        return reg_logit, clf_logit

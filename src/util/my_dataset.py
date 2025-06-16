@@ -13,7 +13,6 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from util.log_transform import log_transform_torch
 
 
-
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
@@ -52,11 +51,12 @@ class MyDataset(Dataset):
         images = np.load(path)
         x = images["x"] # (5, 1000, 70)
         x = torch.from_numpy(x)
+        x = F.pad(x, pad=(1, 1, 76, 76), mode="constant")
         x = log_transform_torch(x)
         x = (x - self.mean_x) / self.std_x
-        x = x.unsqueeze(dim=0) # (1, 5, 1000, 70)
-        x = F.interpolate(x, size=(self.height, self.width), mode="bilinear")
-        x = x.squeeze(dim=0) # (5, new_h, new_w)
+        # x = x.unsqueeze(dim=0) # (1, 5, 1000, 70)
+        # x = F.interpolate(x, size=(self.height, self.width), mode="bicubic")
+        # x = x.squeeze(dim=0) # (5, new_h, new_w)
         x = x.float()
 
         y = images["y"] # (1, 70, 70)
@@ -143,7 +143,7 @@ class MyDataModule(L.LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=os.cpu_count()//2,
+            num_workers=int(os.cpu_count()*2/3),
             worker_init_fn=seed_worker,
             generator=self.generator,
             pin_memory=True,
@@ -154,7 +154,7 @@ class MyDataModule(L.LightningDataModule):
             self.valid_dataset,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=os.cpu_count()//8,
+            num_workers=os.cpu_count()//6,
             generator=self.generator,
             pin_memory=False,
         )
@@ -164,7 +164,7 @@ class MyDataModule(L.LightningDataModule):
             self.test_dataset,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=os.cpu_count()//8,
+            num_workers=os.cpu_count()//6,
             generator=self.generator,
             pin_memory=False,
         )
