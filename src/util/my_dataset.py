@@ -51,12 +51,12 @@ class MyDataset(Dataset):
         images = np.load(path)
         x = images["x"] # (5, 1000, 70)
         x = torch.from_numpy(x)
-        x = F.pad(x, pad=(1, 1, 76, 76), mode="constant")
+        # x = F.pad(x, pad=(1, 1, 76, 76), mode="constant")
         x = log_transform_torch(x)
         x = (x - self.mean_x) / self.std_x
-        # x = x.unsqueeze(dim=0) # (1, 5, 1000, 70)
-        # x = F.interpolate(x, size=(self.height, self.width), mode="bicubic")
-        # x = x.squeeze(dim=0) # (5, new_h, new_w)
+        x = x.unsqueeze(dim=0) # (1, 5, 1000, 70)
+        x = F.interpolate(x, size=(self.height, self.width), mode="bicubic")
+        x = x.squeeze(dim=0) # (5, new_h, new_w)
         x = x.float()
 
         y = images["y"] # (1, 70, 70)

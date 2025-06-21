@@ -28,16 +28,6 @@ class MultiTaskUNet(nn.Module):
         ) -> None:
         super().__init__()
 
-        # resize layer
-        # width_factor = width // 72
-        # self.resize = nn.Sequential(
-        #     nn.Conv2d(in_channels=5, out_channels=32*(width_factor**2), kernel_size=3, padding=1),
-        #     nn.PixelShuffle(width_factor),
-        #     layers.LayerNorm2d(32),
-        #     nn.GELU(),
-        #     nn.Conv2d(in_channels=32, out_channels=5, kernel_size=1, stride=1),
-        # )
-
         # encoder
         self.model_name = model_name
         if "swin" in model_name:
@@ -77,29 +67,21 @@ class MultiTaskUNet(nn.Module):
             self.convs[str(i)] = nn.ModuleList(
                 [
                     # UpConvBlock(ch1, ch2, 2, 2),
-                    # ResConvBlock(2*ch2, ch2, 3, 1, 1),
                     UpPixelShuffleBlock(ch1, ch2, 2),
-                    AdjustLayer(h1, w1, h2, w2),
-                    ResConvSCSEBlock(2*ch2, ch2, 3, 1, 1),
+                    # AdjustLayer(h1, w1, h2, w2),
+                    # ResConvSCSEBlock(2*ch2, ch2, 3, 1, 1),
+                    ResConvBlock(2*ch2, ch2, 3, 1, 1),
                 ]
             )
         
         # Final layer
-        upscale_factor = width // shapes[-1][2]
-        downscale_factor = height // shapes[-1][1]
         self.final = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=shapes[-1][0], out_channels=shapes[-1][0], kernel_size=(1, upscale_factor), stride=(1, upscale_factor)),
-            layers.LayerNorm2d(shapes[-1][0]),
-            nn.GELU(),
-            nn.Conv2d(in_channels=shapes[-1][0], out_channels=shapes[-1][0], kernel_size=(downscale_factor, 1), stride=(downscale_factor, 1)),
-            layers.LayerNorm2d(shapes[-1][0]),
-            nn.GELU(),
             nn.Conv2d(shapes[-1][0], 1, kernel_size=1, bias=False),
         )
         
         # Classifier layer
         self.global_pool = nn.Sequential(
-            SpatialAttention(),
+            # SpatialAttention(),
             nn.AdaptiveAvgPool2d(output_size=1),
             nn.Flatten(start_dim=1),
         )
@@ -119,9 +101,9 @@ class MultiTaskUNet(nn.Module):
         # decoding
         for i in range(len(self.convs)):
             x = self.convs[str(i)][0](x)
-            x = self.convs[str(i)][1](x)
+            # x = self.convs[str(i)][1](x)
             x = torch.cat([x, xs[len(self.convs)-1-i]], dim=1)
-            x = self.convs[str(i)][2](x)
+            x = self.convs[str(i)][1](x)
         
         # final output
         reg_logit = self.final(x)

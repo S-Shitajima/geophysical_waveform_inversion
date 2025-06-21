@@ -260,7 +260,7 @@ class SCSEBlock(nn.Module):
 class SpatialAttention(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.conv = nn.Conv2d(2, 1, kernel_size=3, padding=1)
+        self.conv = nn.Conv2d(2, 1, kernel_size=(3, 1), stride=1, padding=(1, 0))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         avg_out = torch.mean(x, dim=1, keepdim=True)  # (B, 1, H, W)
