@@ -1,3 +1,5 @@
+from typing import Tuple
+
 from timm import create_model, layers
 import torch
 from torch import nn
@@ -47,7 +49,9 @@ class MultiTaskUNet(nn.Module):
                 features_only=True,
                 out_indices=(0, 1, 2, 3),
             )
-        
+
+        # self._update_stem(model_name)
+
         shapes = []
         for i, out in enumerate(self.encoder(torch.randn(1, 5, height, width))):
             print(i, out.shape)
@@ -60,35 +64,80 @@ class MultiTaskUNet(nn.Module):
         print(shapes)
         
         # decorder
-        self.convs = nn.ModuleDict()
+        self.convs = nn.ModuleList()
         for i, (sh1, sh2) in enumerate(zip(shapes[:-1], shapes[1:])):
             ch1, h1, w1 = sh1
             ch2, h2, w2 = sh2
-            self.convs[str(i)] = nn.ModuleList(
+            self.convs.append(nn.ModuleList(
                 [
-                    # UpConvBlock(ch1, ch2, 2, 2),
-                    UpPixelShuffleBlock(ch1, ch2, 2),
+                    UpConvBlock(ch1, ch2, 2, 2),
+                    # UpPixelShuffleBlock(ch1, ch2, 2),
                     # AdjustLayer(h1, w1, h2, w2),
                     # ResConvSCSEBlock(2*ch2, ch2, 3, 1, 1),
                     ResConvBlock(2*ch2, ch2, 3, 1, 1),
                 ]
-            )
+            ))
         
         # Final layer
         self.final = nn.Sequential(
-            nn.Conv2d(shapes[-1][0], 1, kernel_size=1, bias=False),
+            nn.Conv2d(shapes[-1][0], shapes[-1][0], kernel_size=3, stride=1),
+            layers.LayerNorm2d(shapes[-1][0], eps=1e-05),
+            nn.GELU(),
+            nn.Conv2d(shapes[-1][0], 1, kernel_size=1, stride=1, bias=False),
         )
         
         # Classifier layer
         self.global_pool = nn.Sequential(
-            # SpatialAttention(),
             nn.AdaptiveAvgPool2d(output_size=1),
             nn.Flatten(start_dim=1),
         )
         self.dropouts = nn.ModuleList([nn.Dropout(0.3) for _ in range(5)])
         self.clf = nn.Linear(shapes[0][0], num_classes, bias=False)
+
+        print(self.encoder)
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    # def _update_stem(self, model_name):
+        # if "caformer" in model_name:
+        #     m = self.encoder
+        #     m.stem.conv.stride = (4, 1)
+        #     m.stem.conv.padding = (0, 4)
+        #     m.stem = nn.Sequential(
+        #         nn.ReflectionPad2d((0, 0, 78, 78)),
+        #         m.stem,
+        #     )
+        #     m.stages_0.downsample = nn.AvgPool2d(kernel_size=(4, 1), stride=(4, 1))
+
+        # elif "convnext" in model_name:
+        #     m = self.encoder
+        #     m.stem.conv.stride = (4, 1)
+        #     m.stem.conv.padding = (0, 2)
+        #     m.stages_0.downsample = nn.Sequential(
+        #         nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(4, 2), stride=(4, 1)),
+        #         layers.LayerNorm2d(128, eps=1e-06),
+        #         nn.GELU(),
+        #     )
+
+        # elif "focalnet_base_lrf" in model_name:
+        #     m = self.encoder
+        #     m.stem.proj.stride = (4, 1)
+        #     m.stem.proj.padding = (0, 2)
+        #     m.layers_0.downsample = nn.Sequential(
+        #         nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(4, 2), stride=(4, 1)),
+        #         layers.LayerNorm2d(128, eps=1e-05),
+        #         nn.GELU(),
+        #     )
+
+        # elif "focalnet_large_fl4" in model_name:
+        #     m = self.encoder
+        #     m.stem.proj.stride = (4, 1)
+        #     m.stem.proj.padding = (0, 4)
+        #     m.stem = nn.Sequential(
+        #         nn.ReflectionPad2d((0, 0, 78, 78)),
+        #         m.stem,
+        #     )
+        #     m.layers_0.downsample = nn.AvgPool2d(kernel_size=(4, 1), stride=(4, 1))
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         xs = self.encoder(x)
         if "swin" in self.model_name:
             xs = [x.permute(0, 3, 1, 2) for x in xs]
@@ -96,16 +145,16 @@ class MultiTaskUNet(nn.Module):
 
         # classification
         x_clf = self.global_pool(x)
-        clf_logit = sum([self.clf(dropout(x_clf)) for dropout in self.dropouts]) / 5
+        clf_logit = torch.mean(torch.stack([self.clf(dropout(x_clf)) for dropout in self.dropouts]), dim=0)
 
         # decoding
-        for i in range(len(self.convs)):
-            x = self.convs[str(i)][0](x)
-            # x = self.convs[str(i)][1](x)
+        for i, conv12 in enumerate(self.convs):
+            x = conv12[0](x)
             x = torch.cat([x, xs[len(self.convs)-1-i]], dim=1)
-            x = self.convs[str(i)][1](x)
+            x = conv12[1](x)
         
         # final output
         reg_logit = self.final(x)
-        reg_logit = reg_logit[:, :, 1:71, 1:71]
+        # reg_logit = reg_logit[:, :, 1:71, 1:71]
         return reg_logit, clf_logit
+    

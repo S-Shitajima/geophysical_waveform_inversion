@@ -46,10 +46,10 @@ class ConvBlock(nn.Module):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding),
-            layers.LayerNorm2d(out_channels),
+            layers.LayerNorm2d(out_channels, eps=1e-05),
             nn.GELU(),
             nn.Conv2d(out_channels, out_channels, kernel_size, stride, padding),
-            layers.LayerNorm2d(out_channels),
+            layers.LayerNorm2d(out_channels, eps=1e-05),
             nn.GELU(),
         )
     
@@ -70,10 +70,10 @@ class ResConvBlock(nn.Module):
         super().__init__()
         self.residual = self._residual(in_channels, out_channels)
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
-        self.norm1 = layers.LayerNorm2d(out_channels)
+        self.norm1 = layers.LayerNorm2d(out_channels, eps=1e-05)
         self.act1 = nn.GELU()
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, stride, padding)
-        self.norm2 = layers.LayerNorm2d(out_channels)
+        self.norm2 = layers.LayerNorm2d(out_channels, eps=1e-05)
         self.act2 = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -107,10 +107,10 @@ class ResConvSCSEBlock(nn.Module):
         super().__init__()
         self.residual = self._residual(in_channels, out_channels, stride)
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
-        self.norm1 = layers.LayerNorm2d(out_channels)
+        self.norm1 = layers.LayerNorm2d(out_channels, eps=1e-05)
         self.act1 = nn.GELU()
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, stride=1, padding=padding)
-        self.norm2 = layers.LayerNorm2d(out_channels)
+        self.norm2 = layers.LayerNorm2d(out_channels, eps=1e-05)
         self.scse = SCSEBlock(out_channels)
         self.act2 = nn.GELU()
 
@@ -147,10 +147,10 @@ class PreActResConvBlock(nn.Module):
 
         super().__init__()
         self.residual = self._residual(in_channels, out_channels)
-        self.norm1 = layers.LayerNorm2d(in_channels)
+        self.norm1 = layers.LayerNorm2d(in_channels, eps=1e-05)
         self.act1 = nn.GELU()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
-        self.norm2 = layers.LayerNorm2d(out_channels)
+        self.norm2 = layers.LayerNorm2d(out_channels, eps=1e-05)
         self.act2 = nn.GELU()
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, stride, padding)
 
@@ -185,7 +185,7 @@ class PreActUpConvBlock(nn.Module):
 
         super().__init__()
         self.up = nn.Sequential(
-            layers.LayerNorm2d(in_channels),
+            layers.LayerNorm2d(in_channels, eps=1e-05),
             nn.GELU(),
             nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
         )
@@ -206,7 +206,7 @@ class UpConvBlock(nn.Module):
         super().__init__()
         self.up = nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride),
-            layers.LayerNorm2d(out_channels),
+            layers.LayerNorm2d(out_channels, eps=1e-05),
             nn.GELU(),
         )
     
@@ -226,7 +226,7 @@ class UpPixelShuffleBlock(nn.Module):
         self.up = nn.Sequential(
             nn.Conv2d(in_channels, out_channels*(upscale_factor**2), kernel_size=3, padding=1),
             nn.PixelShuffle(upscale_factor),
-            layers.LayerNorm2d(out_channels),
+            layers.LayerNorm2d(out_channels, eps=1e-05),
             nn.GELU(),
         )
     
